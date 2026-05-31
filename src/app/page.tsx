@@ -38,6 +38,18 @@ export default function Home() {
     }
   }, []);
 
+  const speakFallback = useCallback((text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading, isGeneratingAudio, isTranscribing]);
@@ -65,6 +77,8 @@ if (intervention.shouldIntervene) {
   if (audioResult.audioDataUri && audioPlayerRef.current) {
     audioPlayerRef.current.src = audioResult.audioDataUri;
     audioPlayerRef.current.play().catch(console.warn);
+      } else {
+        speakFallback(intervention.crisisResponse);
   }
   setIsLoading(false);
   return; // Skip normal voiceAgent() flow
@@ -87,8 +101,11 @@ if (intervention.shouldIntervene) {
           audioPlayerRef.current.src = audioResult.audioDataUri;
           audioPlayerRef.current.play().catch(e => {
             console.warn('Audio playback failed:', e);
+            speakFallback(response.response);
           });
         }
+      } else {
+        speakFallback(response.response);
       }
     } catch (error) {
       console.error('Error with voice agent:', error);
