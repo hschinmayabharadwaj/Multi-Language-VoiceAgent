@@ -9,6 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { fallback, retry } from '@genkit-ai/ai/model/middleware';
 import wav from 'wav';
 
 // Define schemas for the conversational flow
@@ -148,6 +149,18 @@ const textToSpeechFlow = ai.defineFlow(
   async ({ text }) => {
     const { media } = await ai.generate({
       model: 'googleai/gemini-2.5-flash-preview-tts',
+      use: [
+        retry({
+          maxRetries: 1,
+          statuses: ['UNAVAILABLE', 'DEADLINE_EXCEEDED'],
+          initialDelayMs: 250,
+          noJitter: true,
+        }),
+        fallback(ai, {
+          models: ['googleai/gemini-2.5-pro-preview-tts'],
+          statuses: ['RESOURCE_EXHAUSTED'],
+        }),
+      ],
       config: {
         responseModalities: ['AUDIO'],
         speechConfig: {
@@ -181,7 +194,7 @@ const speechToTextFlow = ai.defineFlow(
   },
   async ({ audioDataUri }) => {
     const { text } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash',
+      model: 'googleai/gemini-2.5-flash-lite',
       prompt: [
         { media: { url: audioDataUri } },
         { text: 'Transcribe this audio exactly as spoken. Return only the transcription, nothing else.' },
