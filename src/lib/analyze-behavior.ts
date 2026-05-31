@@ -40,7 +40,16 @@ export async function analyzeUserBehavior(text: string): Promise<BehaviorAnalysi
     });
 
     if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      if (response.status >= 500) {
+        console.warn(`[BehaviorAnalysis] API returned ${response.status}, defaulting to safe`);
+      }
+
+      return {
+        label: 'Non-suicidal',
+        confidence: 0,
+        suicidal_probability: 0,
+        risk_level: 'low',
+      };
     }
 
     return await response.json();

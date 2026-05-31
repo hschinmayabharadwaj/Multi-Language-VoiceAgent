@@ -163,7 +163,8 @@ Create a `.env.local` file in the root directory:
 
 ```env
 # Google AI (Gemini) API Key - Required for AI features
-GOOGLE_GENAI_API_KEY=your_google_ai_api_key_here
+# Use either GEMINI_API_KEY or GOOGLE_API_KEY
+GEMINI_API_KEY=your_google_ai_api_key_here
 GOOGLE_API_KEY=your_google_ai_api_key_here
 ```
 

@@ -8,9 +8,23 @@ export function useServiceWorker() {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    if (
+      typeof window === 'undefined' ||
+      !('serviceWorker' in navigator) ||
+      process.env.NODE_ENV !== 'production'
+    ) {
       return;
     }
+
+    let updateInterval: ReturnType<typeof setInterval> | undefined;
+    let isDisposed = false;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_UPDATED') {
+        // SW was updated, reload to get fresh content
+        window.location.reload();
+      }
+    };
     
     const registerSW = async () => {
       try {
@@ -21,9 +35,6 @@ export function useServiceWorker() {
         
         setRegistration(reg);
         setIsInstalled(true);
-        
-        // Force update check on page load
-        reg.update();
         
         // Check for updates
         reg.addEventListener('updatefound', () => {
@@ -40,24 +51,36 @@ export function useServiceWorker() {
         });
         
         // Listen for SW update messages
-        navigator.serviceWorker.addEventListener('message', (event) => {
-          if (event.data?.type === 'SW_UPDATED') {
-            // SW was updated, reload to get fresh content
-            window.location.reload();
-          }
-        });
+        navigator.serviceWorker.addEventListener('message', handleMessage);
         
         // Check for updates periodically
-        setInterval(() => {
-          reg.update();
+        updateInterval = setInterval(() => {
+          void reg.update().catch((error) => {
+            console.warn('Service worker periodic update check failed:', error);
+          });
         }, 60 * 60 * 1000); // Every hour
+
+        if (isDisposed) {
+          clearInterval(updateInterval);
+          navigator.serviceWorker.removeEventListener('message', handleMessage);
+        }
         
       } catch (error) {
         console.error('Service worker registration failed:', error);
       }
     };
     
-    registerSW();
+    void registerSW();
+
+    return () => {
+      isDisposed = true;
+
+      if (updateInterval !== undefined) {
+        clearInterval(updateInterval);
+      }
+
+      navigator.serviceWorker.removeEventListener('message', handleMessage);
+    };
   }, []);
   
   const updateServiceWorker = () => {

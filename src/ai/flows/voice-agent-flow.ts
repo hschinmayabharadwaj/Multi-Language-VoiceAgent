@@ -125,8 +125,17 @@ const voiceAgentFlow = ai.defineFlow(
       outputSchema: ConversationOutputSchema,
     },
     async (input) => {
-        const { output } = await voiceAgentPrompt(input);
-        return output!;
+        try {
+          const { output } = await voiceAgentPrompt(input);
+          return output!;
+        } catch (error) {
+          console.warn('[VoiceAgent] Model unavailable, using safe fallback:', error);
+
+          return {
+            response:
+              "I'm here with you, but I'm having trouble connecting right now. Please try again in a moment, or tell me what you're feeling and I'll do my best to help.",
+          };
+        }
     }
 );
 
