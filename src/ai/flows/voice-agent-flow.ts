@@ -147,42 +147,46 @@ const textToSpeechFlow = ai.defineFlow(
     outputSchema: TTSOutputSchema,
   },
   async ({ text }) => {
-    const { media } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash-preview-tts',
-      use: [
-        retry({
-          maxRetries: 1,
-          statuses: ['UNAVAILABLE', 'DEADLINE_EXCEEDED'],
-          initialDelayMs: 250,
-          noJitter: true,
-        }),
-        fallback(ai, {
-          models: ['googleai/gemini-2.5-pro-preview-tts'],
-          statuses: ['RESOURCE_EXHAUSTED'],
-        }),
-      ],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Algenib' },
+    try {
+      const { media } = await ai.generate({
+        model: 'googleai/gemini-2.5-flash-preview-tts',
+        use: [
+          retry({
+            maxRetries: 1,
+            statuses: ['UNAVAILABLE', 'DEADLINE_EXCEEDED'],
+            initialDelayMs: 250,
+            noJitter: true,
+          }),
+        ],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Algenib' },
+            },
           },
+          maxOutputTokens: 1000,
+          temperature: 0.7,
         },
-        // Optimize for faster generation
-        maxOutputTokens: 1000, // Limit response length for faster processing
-        temperature: 0.7, // Slightly reduce creativity for more consistent responses
-      },
-      prompt: text,
-    });
-    if (!media) {
-      throw new Error('No audio was generated from the TTS model.');
+        prompt: text,
+      });
+      if (!media) {
+        return { audioDataUri: '' };
+      }
+      const audioBuffer = Buffer.from(media.url.substring(media.url.indexOf(',') + 1), 'base64');
+      const wavBase64 = await toWav(audioBuffer);
+      
+      return {
+          audioDataUri: `data:audio/wav;base64,${wavBase64}`
+      };
+    } catch (error: any) {
+      // Return empty on quota/rate limit errors - client will use browser TTS
+      if (error?.status === 429 || error?.message?.includes('quota')) {
+        console.warn('[TTS] Quota exceeded, falling back to browser speech');
+        return { audioDataUri: '' };
+      }
+      throw error;
     }
-    const audioBuffer = Buffer.from(media.url.substring(media.url.indexOf(',') + 1), 'base64');
-    const wavBase64 = await toWav(audioBuffer);
-    
-    return {
-        audioDataUri: `data:audio/wav;base64,${wavBase64}`
-    };
   }
 );
 
@@ -193,13 +197,25 @@ const speechToTextFlow = ai.defineFlow(
     outputSchema: STTOutputSchema,
   },
   async ({ audioDataUri }) => {
-    const { text } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash-lite',
-      prompt: [
-        { media: { url: audioDataUri } },
-        { text: 'Transcribe this audio exactly as spoken. Return only the transcription, nothing else.' },
-      ],
-    });
-    return { transcript: text?.trim() || '' };
+    try {
+      const { text } = await ai.generate({
+        model: 'googleai/gemini-2.5-flash',
+        use: [
+          retry({
+            maxRetries: 2,
+            statuses: ['UNAVAILABLE', 'DEADLINE_EXCEEDED'],
+            initialDelayMs: 500,
+          }),
+        ],
+        prompt: [
+          { media: { url: audioDataUri, contentType: 'audio/wav' } },
+          { text: 'Transcribe this audio exactly as spoken. Return only the transcription, nothing else.' },
+        ],
+      });
+      return { transcript: text?.trim() || '' };
+    } catch (error) {
+      console.error('[SpeechToText] Error:', error);
+      return { transcript: '' };
+    }
   }
 );
